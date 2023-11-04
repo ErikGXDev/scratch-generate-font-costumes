@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Image Chunk Splitter</title>
+  </head>
+  <body style="background-color: bisque">
+    <input
+      type="number"
+      id="chunkWidth"
+      placeholder="Chunk Width (in pixels)"
+      oninput="updateGuidelines()"
+    />
+    <input
+      type="number"
+      id="chunkHeight"
+      placeholder="Chunk Height (in pixels)"
+      oninput="updateGuidelines()"
+    />
+    <input type="file" id="imageFile" accept=".png" onchange="loadImage()" />
+    <button onclick="splitAndDownload()">Split and Download</button>
+    <input placeholder="Transcribe Letters" id="letters" style="width: 80vw" />
+    <br />
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+      function generateRandomString(length) {
+        const charset = "abcdef0123456789";
+        let randomString = "";
+        for (let i = 0; i < length; i++) {
+          const randomIndex = Math.floor(Math.random() * charset.length);
+          randomString += charset[randomIndex];
+        }
+        return randomString;
+      }
+
+      let gImg;
+      function drawGuidelines(canvas, ctx, chunkWidth, chunkHeight) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gImg) {
+          ctx.drawImage(gImg, 0, 0);
+        }
+
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 1;
+
+        // Vertical guidelines
+        for (let x = 0; x < canvas.width; x += chunkWidth) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+
+        // Horizontal guidelines
+        for (let y = 0; y < canvas.height; y += chunkHeight) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+      }
+
+      function updateGuidelines() {
+        const chunkWidth = parseInt(
+          document.getElementById("chunkWidth").value,
+          10
+        );
+        const chunkHeight = parseInt(
+          document.getElementById("chunkHeight").value,
+          10
+        );
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        // Draw guidelines
+        drawGuidelines(canvas, ctx, chunkWidth, chunkHeight);
+      }
+
+      function loadImage() {
+        const imageFileInput = document.getElementById("imageFile");
+        const file = imageFileInput.files[0];
+        if (!file) {
+          alert("Please select an image file.");
+          return;
+        }
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const img = new Image();
+          img.src = e.target.result;
+          img.onload = function () {
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            // Draw guidelines
+            gImg = img;
+            drawGuidelines(
+              canvas,
+              ctx,
+              parseInt(document.getElementById("chunkWidth").value, 10),
+              parseInt(document.getElementById("chunkHeight").value, 10)
+            );
+          };
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function splitAndDownload() {
+        const chunkWidth = parseInt(
+          document.getElementById("chunkWidth").value,
+          10
+        );
+        const chunkHeight = parseInt(
+          document.getElementById("chunkHeight").value,
+          10
+        );
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const chunks = [];
+
+        const imageFileInput = document.getElementById("imageFile");
+        const file = imageFileInput.files[0];
+        if (!file) {
+          alert("Please select an image file.");
+          return;
+        }
+
+        const letters = document.getElementById("letters").value;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const img = new Image();
+          img.src = e.target.result;
+          img.onload = function () {
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            console.log(img.width, img.height);
+            ctx.drawImage(img, 0, 0);
+
+            const chunks = [];
+
+            console.log(chunkHeight, chunkWidth);
+            for (let y = 0; y < img.height; y += chunkHeight) {
+              for (let x = 0; x < img.width; x += chunkWidth) {
+                const chunkCanvas = document.createElement("canvas");
+                chunkCanvas.width = chunkWidth;
+                chunkCanvas.height = chunkHeight;
+                const chunkCtx = chunkCanvas.getContext("2d");
+                chunkCtx.drawImage(canvas, -x, -y);
+
+                // Check if the chunk is one single color
+                const chunkData = chunkCtx.getImageData(
+                  0,
+                  0,
+                  chunkWidth,
+                  chunkHeight
+                ).data;
+
+                chunks.push(chunkCanvas.toDataURL("image/png"));
+              }
+            }
+
+            // Create and download a zip file with the image chunks
+            const zip = new JSZip();
+            let costumes = chunks.map((chunk, index) => {
+              let cname = generateRandomString(32);
+              zip.file(`${cname}.png`, chunk.split(",")[1], {
+                base64: true,
+              });
+
+              return {
+                name: letters[index] || Math.random().toFixed(5).toString(),
+                bitmapResolution: 2,
+                dataFormat: "png",
+                assetId: cname,
+                md5ext: cname + ".png",
+                rotationCenterX: 0,
+                rotationCenterY: 0,
+              };
+            });
+
+            console.log(costumes);
+
+            let sprite = {
+              isStage: false,
+              name: "Generated",
+              variables: {},
+              lists: {},
+              broadcasts: {},
+              blocks: {},
+              comments: {},
+              currentCostume: 0,
+              costumes: costumes,
+              sounds: [],
+              volume: 100,
+              visible: true,
+              x: -70,
+              y: 79,
+              size: 100,
+              direction: 90,
+              draggable: false,
+              rotationStyle: "all around",
+            };
+
+            zip.file("sprite.json", JSON.stringify(sprite));
+
+            zip.generateAsync({ type: "blob" }).then(function (blob) {
+              saveAs(
+                blob,
+                "image_chunks" + Math.random().toFixed(4) + ".sprite3"
+              );
+            });
+          };
+        };
+
+        reader.readAsDataURL(file);
+      }
+
+      function isChunkSingleColor(chunkData) {
+        const firstPixel = [
+          chunkData[0],
+          chunkData[1],
+          chunkData[2],
+          chunkData[3],
+        ];
+
+        for (let i = 0; i < chunkData.length; i += 4) {
+          const pixel = [
+            chunkData[i],
+            chunkData[i + 1],
+            chunkData[i + 2],
+            chunkData[i + 3],
+          ];
+          if (!arraysEqual(pixel, firstPixel)) {
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+      function arraysEqual(a, b) {
+        return (
+          a.length === b.length && a.every((value, index) => value === b[index])
+        );
+      }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.3/FileSaver.min.js"></script>
+  </body>
+</html>
